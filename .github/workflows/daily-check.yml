@@ -1,0 +1,31 @@
+name: Daily zoning filing check
+
+on:
+  schedule:
+    # 12:00 UTC = 7am Eastern (8am during EST) — adjust to taste
+    - cron: "0 12 * * *"
+  workflow_dispatch: {}   # lets you click "Run workflow" in the GitHub UI to test on demand
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install -r monitor/requirements.txt
+
+      - name: Install headless browser
+        run: playwright install --with-deps chromium
+
+      - name: Run monitor
+        run: python monitor/check_new_filings.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM: ${{ secrets.RESEND_FROM }}

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forsyth Zoning Watch</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --paper: #EEF0EA; --paper-dim: #E3E6DD; --ink: #1C2420; --ink-soft: #4B564D;
+    --line: #C7CDBE; --flag: #A8392B; --flag-soft: #E9CCC6; --context: #6C7A82;
+    --gold: #A97A22; --focus: #2F6FA8; --home: #2F6FA8;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+  a{color:var(--focus);}
+  a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:2px;}
+
+  header{padding:14px 18px 12px;border-bottom:1px solid var(--line);flex:none;}
+  header h1{font-family:Georgia,"Iowan Old Style","Palatino Linotype",serif;font-size:20px;font-weight:600;margin:0 0 2px;}
+  header p{margin:0;font-size:12.5px;color:var(--ink-soft);max-width:64ch;line-height:1.4;}
+
+  #layout{flex:1;display:flex;min-height:0;}
+  #sidebar{width:380px;flex:none;border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow-y:auto;}
+
+  .block{padding:14px;border-bottom:1px solid var(--line);}
+  .block h2{font-size:13px;margin:0 0 8px;font-weight:600;}
+
+  input[type="text"],input[type="email"],select{
+    width:100%;padding:8px 9px;border:1px solid var(--line);background:#fff;font-size:13.5px;color:var(--ink);border-radius:2px;
+  }
+  .search-row{display:flex;gap:6px;}
+  .search-row input{flex:1;}
+  button{
+    padding:8px 14px;border:1px solid var(--ink);background:var(--ink);color:var(--paper);
+    font-size:13px;border-radius:2px;cursor:pointer;font-family:inherit;
+  }
+  button:hover{opacity:0.88;}
+  button.secondary{background:transparent;color:var(--ink);border-color:var(--line);}
+  .hint{font-size:11.5px;color:var(--ink-soft);margin-top:6px;line-height:1.4;}
+  .status{font-size:12.5px;margin-top:8px;padding:8px 10px;border-radius:2px;display:none;}
+  .status.show{display:block;}
+  .status.ok{background:#DCE8DF;color:#2F4A36;}
+  .status.err{background:var(--flag-soft);color:#6B241A;}
+
+  #found-address{font-size:13px;margin-top:10px;padding:8px 10px;background:var(--paper-dim);border-left:3px solid var(--home);display:none;}
+  #found-address.show{display:block;}
+
+  #subscribe-block{display:none;}
+  #subscribe-block.show{display:block;}
+  .radius-row{display:flex;align-items:center;gap:8px;margin-top:8px;}
+  .radius-row label{font-size:12.5px;color:var(--ink-soft);white-space:nowrap;}
+
+  .legend-row{display:flex;align-items:center;gap:7px;margin-bottom:5px;font-size:12px;color:var(--ink-soft);}
+  .legend-row:last-child{margin-bottom:0;}
+  .swatch{width:10px;height:10px;border-radius:50%;flex:none;}
+
+  #nearby-summary{font-size:12.5px;color:var(--ink-soft);}
+
+  details.method summary{cursor:pointer;color:var(--ink-soft);font-size:12px;list-style:none;}
+  details.method summary::-webkit-details-marker{display:none;}
+  details.method summary::before{content:"+ ";color:var(--gold);}
+  details.method[open] summary::before{content:"\2212 ";}
+  details.method .method-body{margin-top:8px;font-size:12px;color:var(--ink-soft);line-height:1.5;}
+  details.method .method-body p{margin:0 0 8px;}
+
+  #map-wrap{flex:1;position:relative;min-width:0;}
+  #map{height:100%;width:100%;background:var(--paper-dim);}
+  .leaflet-popup-content-wrapper{border-radius:2px;}
+  .pp{font-size:12.5px;line-height:1.5;min-width:200px;}
+  .pp .pp-parcel{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:13px;font-weight:600;}
+  .pp dl{margin:6px 0 0;display:grid;grid-template-columns:auto 1fr;gap:2px 8px;}
+  .pp dt{color:var(--ink-soft);} .pp dd{margin:0;}
+
+  @media (max-width:760px){
+    #layout{flex-direction:column;}
+    #sidebar{width:100%;height:52vh;border-right:none;border-bottom:1px solid var(--line);}
+    #map-wrap{flex:1;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Forsyth Zoning Watch</h1>
+  <p>Look up any address in Forsyth County to see the zoning and development picture nearby, and optionally get an email the day a new rezoning or site development plan is filed close to it.</p>
+</header>
+
+<div id="layout">
+  <div id="sidebar">
+    <div class="block">
+      <h2>Find an address</h2>
+      <div class="search-row">
+        <input type="text" id="addr-input" placeholder="e.g. 5105 Bethelview Rd, Cumming" autocomplete="off">
+        <button id="addr-search">Search</button>
+      </div>
+      <div class="status" id="addr-status"></div>
+      <div id="found-address"></div>
+    </div>
+
+    <div class="block" id="nearby-block" style="display:none;">
+      <h2>What's nearby</h2>
+      <div id="nearby-summary">&mdash;</div>
+      <div style="margin-top:10px;">
+        <div class="legend-row"><span class="swatch" style="background:var(--flag)"></span>PUD-zoned, no assessed building &mdash; possible candidate</div>
+        <div class="legend-row"><span class="swatch" style="background:var(--context)"></span>Other PUD-zoned parcel</div>
+        <div class="legend-row"><span class="swatch" style="background:#B7BDAE"></span>Other zoning, for context</div>
+        <div class="legend-row"><span class="swatch" style="background:var(--home);width:12px;height:12px;"></span>Your searched address</div>
+      </div>
+    </div>
+
+    <div class="block" id="subscribe-block">
+      <h2>Get alerts near this address</h2>
+      <input type="email" id="sub-email" placeholder="you@example.com" autocomplete="email">
+      <div class="radius-row">
+        <label for="sub-radius">Radius</label>
+        <select id="sub-radius">
+          <option value="0.25">0.25 miles</option>
+          <option value="0.5" selected>0.5 miles</option>
+          <option value="1">1 mile</option>
+          <option value="2">2 miles</option>
+        </select>
+      </div>
+      <div style="margin-top:10px;">
+        <button id="sub-submit">Sign up for alerts</button>
+      </div>
+      <div class="status" id="sub-status"></div>
+      <p class="hint">You'll get one email to confirm — that can take up to a day, since confirmations go out on the same daily check as everything else here. Every alert email has an unsubscribe link.</p>
+    </div>
+
+    <div class="block">
+      <details class="method">
+        <summary>What this covers, and its limits</summary>
+        <div class="method-body">
+          <p><strong>Address lookup</strong> uses Forsyth County's own public geocoder — no third-party service involved.</p>
+          <p><strong>Nearby parcels</strong> come live from the county's parcel GIS layer, rebuilt nightly from tax/assessment records.</p>
+          <p><strong>The red "possible candidate" flag</strong> means a PUD-zoned parcel currently shows no assessed building area — a reasonable proxy for undeveloped land, but assessed value lags real construction by a full cycle. A parcel can be under active construction and still show flagged here.</p>
+          <p><strong>Alerts cover</strong> new Rezoning, Zoning Condition Amendment, and Site Development filings countywide — checked once daily against the county's permit portal, not in real time.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div id="map-wrap">
+    <div id="map"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ---- Fill these in after you create your Supabase project — see SETUP.md ----
+  var SUPABASE_URL = "YOUR_SUPABASE_URL";
+  var SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+  // -------------------------------------------------------------------------
+
+  var GEOCODE_URL = "https://geo.forsythco.com/gis/rest/services/GeocodeService/FCCompositeLocator/GeocodeServer/findAddressCandidates";
+  var PARCEL_QUERY_URL = "https://geo.forsythco.com/gis/rest/services/Public/Tax_Parcel/FeatureServer/0/query";
+  var OUT_FIELDS = "PARCELID,ZONING,CLASSCD,CLASSDSCRP,SITEADDRESS,BLDGAREA,STATEDAREA,CNTASSDVAL";
+  var SEARCH_RADIUS_MILES = 0.75;
+
+  var map = L.map('map', {preferCanvas:true}).setView([34.225, -84.14], 11);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+  }).addTo(map);
+
+  var parcelLayer = L.layerGroup().addTo(map);
+  var homeMarker = null;
+  var lastFound = null; // {address, lat, lon}
+
+  function setStatus(el, msg, kind){
+    el.textContent = msg;
+    el.className = "status show " + (kind || "");
+  }
+
+  function fmtAcres(v){ return (v===null||v===undefined) ? "&mdash;" : v.toFixed(2); }
+  function fmtMoney(v){ return (v===null||v===undefined) ? "&mdash;" : "$" + Math.round(v).toLocaleString(); }
+  function isFlagged(a){ return a.BLDGAREA === null || a.BLDGAREA === undefined || a.BLDGAREA === 0; }
+
+  function milesToDegrees(lat, miles){
+    return { dLat: miles/69.0, dLon: miles/(69.0*Math.cos(lat*Math.PI/180)) };
+  }
+
+  async function geocodeAddress(q){
+    var url = GEOCODE_URL + "?SingleLine=" + encodeURIComponent(q + ", Cumming, GA") +
+      "&outFields=*&maxLocations=1&outSR=4326&f=json";
+    var res = await fetch(url);
+    var data = await res.json();
+    var candidates = data.candidates || [];
+    if (candidates.length === 0 || candidates[0].score < 70) return null;
+    var c = candidates[0];
+    return { address: c.address, lat: c.location.y, lon: c.location.x, score: c.score };
+  }
+
+  async function loadNearbyParcels(lat, lon){
+    var d = milesToDegrees(lat, SEARCH_RADIUS_MILES);
+    var envelope = {
+      xmin: lon - d.dLon, ymin: lat - d.dLat,
+      xmax: lon + d.dLon, ymax: lat + d.dLat,
+      spatialReference: {wkid:4326}
+    };
+    var params = new URLSearchParams({
+      geometry: JSON.stringify(envelope),
+      geometryType: "esriGeometryEnvelope",
+      spatialRel: "esriSpatialRelIntersects",
+      inSR: "4326",
+      outSR: "4326",
+      outFields: OUT_FIELDS,
+      returnGeometry: "false",
+      returnCentroid: "true",
+      resultRecordCount: "1500",
+      f: "json"
+    });
+    var res = await fetch(PARCEL_QUERY_URL + "?" + params.toString());
+    var data = await res.json();
+    return data.features || [];
+  }
+
+  function popupHtml(a){
+    var html = '<div class="pp">';
+    if (a.ZONING === 'PUD' && isFlagged(a)) html += '<div style="color:var(--flag);font-weight:600;font-size:11.5px;text-transform:uppercase;">Possible candidate</div>';
+    html += '<div class="pp-parcel">' + a.PARCELID + '</div><dl>';
+    html += '<dt>Zoning</dt><dd>' + (a.ZONING||'&mdash;') + '</dd>';
+    html += '<dt>Class</dt><dd>' + (a.CLASSDSCRP||'&mdash;') + '</dd>';
+    html += '<dt>Address</dt><dd>' + (a.SITEADDRESS||'&mdash;') + '</dd>';
+    html += '<dt>Acreage</dt><dd>' + fmtAcres(a.STATEDAREA) + '</dd>';
+    html += '<dt>Assessed</dt><dd>' + fmtMoney(a.CNTASSDVAL) + '</dd>';
+    html += '</dl></div>';
+    return html;
+  }
+
+  function renderParcels(features){
+    parcelLayer.clearLayers();
+    var flaggedCount = 0;
+    features.forEach(function(f){
+      var a = f.attributes, c = f.centroid;
+      if (!c) return;
+      var pud = a.ZONING === 'PUD';
+      var flagged = pud && isFlagged(a);
+      if (flagged) flaggedCount++;
+      var color = flagged ? "#A8392B" : (pud ? "#6C7A82" : "#B7BDAE");
+      var m = L.circleMarker([c.y, c.x], {
+        radius: flagged ? 6 : 4,
+        weight: flagged ? 1.2 : 0,
+        color: flagged ? "#7A2A1F" : "transparent",
+        fillColor: color,
+        fillOpacity: flagged ? 0.9 : 0.55
+      });
+      m.bindPopup(popupHtml(a));
+      parcelLayer.addLayer(m);
+    });
+    document.getElementById('nearby-summary').innerHTML =
+      features.length.toLocaleString() + ' parcels within ' + SEARCH_RADIUS_MILES + ' mi &mdash; ' +
+      '<strong style="color:var(--flag)">' + flaggedCount + '</strong> flagged';
+    document.getElementById('nearby-block').style.display = 'block';
+  }
+
+  async function doSearch(){
+    var q = document.getElementById('addr-input').value.trim();
+    var statusEl = document.getElementById('addr-status');
+    if (!q){ setStatus(statusEl, "Type an address first.", "err"); return; }
+    setStatus(statusEl, "Searching\u2026", "");
+
+    var found;
+    try{ found = await geocodeAddress(q); }
+    catch(e){ setStatus(statusEl, "Couldn't reach the county's address service. Try again in a moment.", "err"); return; }
+
+    if (!found){ setStatus(statusEl, "Couldn't find that address in Forsyth County. Try including the street type (Rd, Dr, Ln).", "err"); return; }
+
+    statusEl.className = "status";
+    lastFound = found;
+
+    var addrBox = document.getElementById('found-address');
+    addrBox.innerHTML = "Found: <strong>" + found.address + "</strong>";
+    addrBox.classList.add('show');
+
+    if (homeMarker) map.removeLayer(homeMarker);
+    homeMarker = L.circleMarker([found.lat, found.lon], {
+      radius: 8, weight: 2, color: "#1C2420", fillColor: "#2F6FA8", fillOpacity: 1
+    }).addTo(map);
+    map.setView([found.lat, found.lon], 15, {animate:true});
+
+    document.getElementById('subscribe-block').classList.add('show');
+
+    try {
+      var features = await loadNearbyParcels(found.lat, found.lon);
+      renderParcels(features);
+    } catch(e){
+      console.error(e);
+    }
+  }
+
+  document.getElementById('addr-search').addEventListener('click', doSearch);
+  document.getElementById('addr-input').addEventListener('keydown', function(e){
+    if (e.key === 'Enter') doSearch();
+  });
+
+  document.getElementById('sub-submit').addEventListener('click', async function(){
+    var statusEl = document.getElementById('sub-status');
+    var email = document.getElementById('sub-email').value.trim();
+    var radius = parseFloat(document.getElementById('sub-radius').value);
+
+    if (!lastFound){ setStatus(statusEl, "Search an address first.", "err"); return; }
+    if (!email || email.indexOf('@') === -1){ setStatus(statusEl, "Enter a valid email.", "err"); return; }
+
+    setStatus(statusEl, "Signing up\u2026", "");
+    try{
+      var res = await fetch(SUPABASE_URL + "/rest/v1/subscribers", {
+        method: "POST",
+        headers: {
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+          "Content-Type": "application/json",
+          "Prefer": "return=minimal"
+        },
+        body: JSON.stringify({
+          email: email, address: lastFound.address,
+          lat: lastFound.lat, lon: lastFound.lon, radius_miles: radius
+        })
+      });
+      if (!res.ok){ throw new Error("HTTP " + res.status); }
+      setStatus(statusEl, "Signed up. Check your email in the next day to confirm.", "ok");
+    } catch(e){
+      setStatus(statusEl, "Couldn't sign you up right now — try again shortly.", "err");
+    }
+  });
+})();
+</script>
+</body>
+</html>

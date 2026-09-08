@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forsyth Zoning Watch</title>
+<style>
+  body{
+    margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:#EEF0EA;color:#1C2420;font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  .card{max-width:440px;padding:28px 26px;border:1px solid #C7CDBE;background:#fff;border-radius:2px;text-align:center;}
+  h1{font-family:Georgia,"Iowan Old Style","Palatino Linotype",serif;font-size:19px;margin:0 0 10px;}
+  p{font-size:14px;line-height:1.5;color:#4B564D;margin:0 0 6px;}
+  a{color:#2F6FA8;}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1 id="title">Working&hellip;</h1>
+    <p id="message">One moment.</p>
+  </div>
+
+<script>
+(function(){
+  var SUPABASE_URL = "YOUR_SUPABASE_URL";
+  var SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+
+  var params = new URLSearchParams(window.location.search);
+  var action = params.get('action');
+  var token = params.get('token');
+  var titleEl = document.getElementById('title');
+  var msgEl = document.getElementById('message');
+
+  function fail(msg){
+    titleEl.textContent = "Something went wrong";
+    msgEl.textContent = msg;
+  }
+
+  if (!action || !token){
+    fail("This link is missing information. Use the link from your email directly.");
+    return;
+  }
+
+  var headers = {
+    "apikey": SUPABASE_ANON_KEY,
+    "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+    "Content-Type": "application/json"
+  };
+
+  if (action === 'confirm'){
+    fetch(SUPABASE_URL + "/rest/v1/subscribers?confirm_token=eq." + encodeURIComponent(token), {
+      method: "PATCH", headers: headers, body: JSON.stringify({confirmed: true})
+    }).then(function(r){
+      if (!r.ok) throw new Error();
+      titleEl.textContent = "You're confirmed";
+      msgEl.textContent = "You'll get an email the day a new rezoning or site development filing shows up near your address.";
+    }).catch(function(){ fail("That confirmation link didn't work. It may have already been used."); });
+
+  } else if (action === 'unsubscribe'){
+    fetch(SUPABASE_URL + "/rest/v1/subscribers?unsubscribe_token=eq." + encodeURIComponent(token), {
+      method: "DELETE", headers: headers
+    }).then(function(r){
+      if (!r.ok) throw new Error();
+      titleEl.textContent = "Unsubscribed";
+      msgEl.textContent = "You won't get any more alerts from Forsyth Zoning Watch.";
+    }).catch(function(){ fail("That unsubscribe link didn't work. It may have already been used."); });
+
+  } else {
+    fail("Unrecognized link.");
+  }
+})();
+</script>
+</body>
+</html>
