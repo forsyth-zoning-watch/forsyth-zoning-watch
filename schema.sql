@@ -70,10 +70,18 @@ create policy "public can confirm or unsubscribe with their token" on subscriber
 -- this table back. The monitor script uses the separate service key, which
 -- bypasses RLS entirely and is never exposed to the browser.
 
--- These two tables are only ever touched by the monitor script's service key
--- (which bypasses RLS entirely), never by the public anon key. RLS is enabled
--- with no policies at all, so the anon/authenticated roles get zero access —
--- otherwise Supabase's default grants would let the public key read or even
--- tamper with the dedup/notification records.
+-- processed_filings holds nothing but public government filing data (case
+-- number, plan type, dates, parcel/address) — no PII — so the site is allowed
+-- to read it back to show "last known filing" per parcel on the map. Only the
+-- monitor script's service key (which bypasses RLS entirely) can write to it.
 alter table processed_filings enable row level security;
+
+create policy "public can read processed filings" on processed_filings
+  for select to anon
+  using (true);
+
+-- notifications_sent links a subscriber_id to a case_number — not PII by
+-- itself, but there's no reason the public site needs it, so it stays fully
+-- locked: RLS enabled with no policies at all means anon/authenticated get
+-- zero access (otherwise Supabase's default grants would allow it).
 alter table notifications_sent enable row level security;

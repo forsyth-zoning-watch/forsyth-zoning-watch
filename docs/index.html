@@ -161,8 +161,34 @@
 
   var GEOCODE_URL = "https://geo.forsythco.com/gis/rest/services/GeocodeService/FCCompositeLocator/GeocodeServer/findAddressCandidates";
   var PARCEL_QUERY_URL = "https://geo.forsythco.com/gis/rest/services/Public/Tax_Parcel/FeatureServer/0/query";
-  var OUT_FIELDS = "PARCELID,ZONING,CLASSCD,CLASSDSCRP,SITEADDRESS,BLDGAREA,STATEDAREA,CNTASSDVAL";
+  var OUT_FIELDS = "PARCELID,ZONING,CLASSCD,CLASSDSCRP,SITEADDRESS,BLDGAREA,STATEDAREA,CNTASSDVAL,Link";
   var SEARCH_RADIUS_MILES = 0.75;
+  var CSS_SEARCH_URL = "https://css.forsythco.com/EnerGov_Prod/SelfService/#/search";
+
+  // Populated once from our own processed_filings table (see loadRecentFilings) —
+  // keyed by parcel ID with all whitespace stripped, since the GIS layer's
+  // PARCELID ("184   270") and the county portal's scraped Main Parcel field
+  // don't necessarily agree on internal spacing.
+  var filingsByParcel = {};
+
+  function normalizeParcel(id){ return (id || "").replace(/\s+/g, ""); }
+
+  async function loadRecentFilings(){
+    try{
+      var res = await fetch(
+        SUPABASE_URL + "/rest/v1/processed_filings?select=case_number,plan_type,applied_date,main_parcel&order=applied_date.desc&limit=1000",
+        { headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": "Bearer " + SUPABASE_ANON_KEY } }
+      );
+      if (!res.ok) return;
+      var rows = await res.json();
+      rows.forEach(function(row){
+        var key = normalizeParcel(row.main_parcel);
+        // Rows arrive newest-first, so the first one seen per parcel is the
+        // most recent — never overwrite it with an older one.
+        if (key && !filingsByParcel[key]) filingsByParcel[key] = row;
+      });
+    } catch(e){ console.error("Couldn't load recent filings:", e); }
+  }
 
   var map = L.map('map', {preferCanvas:true}).setView([34.225, -84.14], 11);
   L.tileLayer('https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png?key=' + CARTO_API_KEY, {
@@ -173,6 +199,8 @@
   var parcelLayer = L.layerGroup().addTo(map);
   var homeMarker = null;
   var lastFound = null; // {address, lat, lon}
+
+  loadRecentFilings();
 
   function setStatus(el, msg, kind){
     el.textContent = msg;
@@ -231,7 +259,19 @@
     html += '<dt>Address</dt><dd>' + (a.SITEADDRESS||'&mdash;') + '</dd>';
     html += '<dt>Acreage</dt><dd>' + fmtAcres(a.STATEDAREA) + '</dd>';
     html += '<dt>Assessed</dt><dd>' + fmtMoney(a.CNTASSDVAL) + '</dd>';
-    html += '</dl></div>';
+
+    var filing = filingsByParcel[normalizeParcel(a.PARCELID)];
+    if (filing){
+      html += '<dt>Last filing</dt><dd>' + filing.plan_type + ', applied ' + filing.applied_date + '</dd>';
+    }
+    html += '</dl>';
+
+    html += '<div style="margin-top:8px;display:flex;gap:10px;">';
+    if (a.Link) html += '<a href="' + a.Link + '" target="_blank" rel="noopener">qPublic record</a>';
+    html += '<a href="' + CSS_SEARCH_URL + '" target="_blank" rel="noopener">Search county permits</a>';
+    html += '</div>';
+
+    html += '</div>';
     return html;
   }
 
