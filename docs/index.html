@@ -68,6 +68,10 @@
 
   #map-wrap{flex:1;position:relative;min-width:0;}
   #map{height:100%;width:100%;background:var(--paper-dim);}
+  #search-area-btn{
+    position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:1000;
+    box-shadow:0 1px 5px rgba(0,0,0,0.3);
+  }
   .leaflet-popup-content-wrapper{border-radius:2px;}
   .pp{font-size:12.5px;line-height:1.5;min-width:200px;}
   .pp .pp-parcel{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:13px;font-weight:600;}
@@ -145,6 +149,7 @@
 
   <div id="map-wrap">
     <div id="map"></div>
+    <button id="search-area-btn" style="display:none;">Search this area</button>
   </div>
 </div>
 
@@ -267,14 +272,6 @@
     });
   }
 
-  function boundsToEnvelope(bounds){
-    return {
-      xmin: bounds.getWest(), ymin: bounds.getSouth(),
-      xmax: bounds.getEast(), ymax: bounds.getNorth(),
-      spatialReference: {wkid:4326}
-    };
-  }
-
   function popupHtml(a){
     var html = '<div class="pp">';
     if (a.ZONING === 'PUD' && isFlagged(a)) html += '<div style="color:var(--flag);font-weight:600;font-size:11.5px;text-transform:uppercase;">Possible candidate</div>';
@@ -340,25 +337,39 @@
     document.getElementById('nearby-block').style.display = 'block';
   }
 
-  // Once you've searched an address, panning around at roughly that same
-  // zoom level loads whatever's newly visible instead of stopping dead at
-  // the original search radius. Gated by MIN_PAN_LOAD_ZOOM so zooming out to
-  // browse the whole county doesn't try to fetch thousands of parcels at once.
+  // Once you've searched an address, panning away from the loaded area at
+  // roughly that same zoom level surfaces a "Search this area" button rather
+  // than fetching silently — gated by MIN_PAN_LOAD_ZOOM so zooming out to
+  // browse the whole county never offers to load thousands of parcels at once.
   var MIN_PAN_LOAD_ZOOM = 14;
-  var suppressNextMoveEnd = false;
-  var panLoadInFlight = false;
+  var PAN_SHOW_BUTTON_METERS = 400; // ~0.25 mile — ignores small nudges
+  var lastLoadCenter = null; // L.LatLng of the center last loaded around
+  var areaLoadInFlight = false;
+  var searchAreaBtn = document.getElementById('search-area-btn');
 
-  map.on('moveend', async function(){
-    if (!lastFound) return;
-    if (suppressNextMoveEnd){ suppressNextMoveEnd = false; return; }
-    if (map.getZoom() < MIN_PAN_LOAD_ZOOM) return;
-    if (panLoadInFlight) return;
-    panLoadInFlight = true;
+  map.on('moveend', function(){
+    if (!lastFound || !lastLoadCenter) { searchAreaBtn.style.display = 'none'; return; }
+    var farEnough = map.getCenter().distanceTo(lastLoadCenter) > PAN_SHOW_BUTTON_METERS;
+    searchAreaBtn.style.display = (map.getZoom() >= MIN_PAN_LOAD_ZOOM && farEnough) ? 'block' : 'none';
+  });
+
+  searchAreaBtn.addEventListener('click', async function(){
+    if (areaLoadInFlight) return;
+    areaLoadInFlight = true;
+    searchAreaBtn.disabled = true;
+    searchAreaBtn.textContent = 'Searching…';
     try {
-      var features = await queryParcels(boundsToEnvelope(map.getBounds()));
+      var center = map.getCenter();
+      var features = await loadNearbyParcels(center.lat, center.lng);
       addParcels(features);
-    } catch(e){ console.error(e); }
-    panLoadInFlight = false;
+      lastLoadCenter = center;
+    } catch(e){
+      console.error(e);
+    }
+    searchAreaBtn.disabled = false;
+    searchAreaBtn.textContent = 'Search this area';
+    searchAreaBtn.style.display = 'none';
+    areaLoadInFlight = false;
   });
 
   async function doSearch(){
@@ -384,15 +395,16 @@
     homeMarker = L.circleMarker([found.lat, found.lon], {
       radius: 8, weight: 2, color: "#1C2420", fillColor: "#2F6FA8", fillOpacity: 1
     }).addTo(map);
-    suppressNextMoveEnd = true;
     map.setView([found.lat, found.lon], 15, {animate:true});
 
     document.getElementById('subscribe-block').classList.add('show');
+    searchAreaBtn.style.display = 'none';
 
     resetParcels();
     try {
       var features = await loadNearbyParcels(found.lat, found.lon);
       addParcels(features);
+      lastLoadCenter = L.latLng(found.lat, found.lon);
     } catch(e){
       console.error(e);
     }
