@@ -28,7 +28,7 @@ to Supabase, which is the shared source of truth.
 
 1. On github.com, create a new **public** repository, e.g. `forsyth-zoning-watch`.
 2. Upload everything in this project into it, keeping the folder structure:
-   `site/`, `monitor/`, `.github/workflows/`, `schema.sql`.
+   `docs/`, `monitor/`, `.github/workflows/`, `schema.sql`.
 
 ## 2. Create the Supabase project
 
@@ -46,20 +46,30 @@ to Supabase, which is the shared source of truth.
 3. **API Keys** → create one, full access. Save it — you won't see it again.
 4. Decide your "from" address, e.g. `alerts@your-domain.org`.
 
-## 4. Fill in the placeholders
+## 4. Get a free CARTO basemap API key
+
+The map's background tiles come from CARTO's free basemap service, which now requires a (free, no card, no approval wait) API key — go to [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey), request one, and save it. Free tier covers 5 million tile loads/month.
+
+## 5. Fill in the placeholders
 
 Three files have placeholder text to replace:
 
-**`site/index.html`** and **`site/manage.html`** — near the top of the `<script>` block:
+**`docs/index.html`** and **`docs/manage.html`** — near the top of the `<script>` block:
 ```js
 var SUPABASE_URL = "YOUR_SUPABASE_URL";
 var SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
 ```
 Replace with your actual Project URL and anon key from step 2.3. (Yes, the anon key really is safe to put in public client-side code — that's what the Row Level Security policies in `schema.sql` are for.)
 
-**`monitor/check_new_filings.py`** and **`site/index.html`** — search for `YOUR_GITHUB_USERNAME` (it appears in the unsubscribe/confirm link URLs) and replace with your actual GitHub username and repo name, matching wherever you end up hosting the site (step 6).
+**`docs/index.html`** only — near the same block:
+```js
+var CARTO_API_KEY = "YOUR_CARTO_API_KEY";
+```
+Replace with the key from step 4.
 
-## 5. Add the script's secrets to GitHub
+**`monitor/check_new_filings.py`** and **`docs/index.html`** — search for `YOUR_GITHUB_USERNAME` (it appears in the unsubscribe/confirm link URLs) and replace with your actual GitHub username and repo name, matching wherever you end up hosting the site (step 7).
+
+## 6. Add the script's secrets to GitHub
 
 In your repo: **Settings → Secrets and variables → Actions → New repository secret**. Add four:
 
@@ -70,11 +80,11 @@ In your repo: **Settings → Secrets and variables → Actions → New repositor
 | `RESEND_API_KEY` | from step 3.3 |
 | `RESEND_FROM` | e.g. `alerts@your-domain.org` |
 
-## 6. Turn on GitHub Pages
+## 7. Turn on GitHub Pages
 
-**Settings → Pages** → Source: deploy from branch → pick your main branch, folder `/site`. Save. GitHub gives you a URL like `https://yourusername.github.io/forsyth-zoning-watch/` — that's the public link you'll share.
+**Settings → Pages** → Source: deploy from branch → pick your main branch, folder `/docs`. Save. GitHub gives you a URL like `https://yourusername.github.io/forsyth-zoning-watch/` — that's the public link you'll share.
 
-## 7. Test the monitor script before trusting it unattended
+## 8. Test the monitor script before trusting it unattended
 
 **Actions tab → Daily zoning filing check → Run workflow** (this is the `workflow_dispatch` trigger — it lets you fire it manually instead of waiting for tomorrow's 7am run). Watch the log.
 

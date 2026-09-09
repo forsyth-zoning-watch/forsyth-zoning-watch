@@ -151,9 +151,13 @@
 <script>
 (function(){
   // ---- Fill these in after you create your Supabase project — see SETUP.md ----
-  var SUPABASE_URL = "https://pnkvbdqbzujgdkixqcmh.supabase.co  ";
+  var SUPABASE_URL = "https://pnkvbdqbzujgdkixqcmh.supabase.co";
   var SUPABASE_ANON_KEY = "sb_publishable_aaohYBTSbnLnAhhlewiagg_ygBZiQBt";
   // -------------------------------------------------------------------------
+
+  // ---- Free key from carto.com/basemaps/apikey — see SETUP.md ----
+  var CARTO_API_KEY = "cb1_32qg_1_2c6a9694224de6639c0f1929";
+  // ------------------------------------------------------------------
 
   var GEOCODE_URL = "https://geo.forsythco.com/gis/rest/services/GeocodeService/FCCompositeLocator/GeocodeServer/findAddressCandidates";
   var PARCEL_QUERY_URL = "https://geo.forsythco.com/gis/rest/services/Public/Tax_Parcel/FeatureServer/0/query";
@@ -161,7 +165,7 @@
   var SEARCH_RADIUS_MILES = 0.75;
 
   var map = L.map('map', {preferCanvas:true}).setView([34.225, -84.14], 11);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  L.tileLayer('https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png?key=' + CARTO_API_KEY, {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
   }).addTo(map);
