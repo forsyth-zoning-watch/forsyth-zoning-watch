@@ -69,3 +69,11 @@ create policy "public can confirm or unsubscribe with their token" on subscriber
 -- No SELECT policy for anon is created on purpose — the public key cannot read
 -- this table back. The monitor script uses the separate service key, which
 -- bypasses RLS entirely and is never exposed to the browser.
+
+-- These two tables are only ever touched by the monitor script's service key
+-- (which bypasses RLS entirely), never by the public anon key. RLS is enabled
+-- with no policies at all, so the anon/authenticated roles get zero access —
+-- otherwise Supabase's default grants would let the public key read or even
+-- tamper with the dedup/notification records.
+alter table processed_filings enable row level security;
+alter table notifications_sent enable row level security;
