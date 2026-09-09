@@ -226,14 +226,7 @@
     return { address: c.address, lat: c.location.y, lon: c.location.x, score: c.score };
   }
 
-  async function loadNearbyParcels(lat, lon){
-    var d = milesToDegrees(lat, SEARCH_RADIUS_MILES);
-    var envelope = {
-      xmin: lon - d.dLon, ymin: lat - d.dLat,
-      xmax: lon + d.dLon, ymax: lat + d.dLat,
-      spatialReference: {wkid:4326}
-    };
-
+  async function queryParcels(envelope){
     // Dense subdivisions can have well over a thousand parcels within even a
     // small radius, and the server silently caps each response — so this has
     // to page through with resultOffset/exceededTransferLimit rather than
@@ -265,6 +258,23 @@
     return allFeatures;
   }
 
+  function loadNearbyParcels(lat, lon){
+    var d = milesToDegrees(lat, SEARCH_RADIUS_MILES);
+    return queryParcels({
+      xmin: lon - d.dLon, ymin: lat - d.dLat,
+      xmax: lon + d.dLon, ymax: lat + d.dLat,
+      spatialReference: {wkid:4326}
+    });
+  }
+
+  function boundsToEnvelope(bounds){
+    return {
+      xmin: bounds.getWest(), ymin: bounds.getSouth(),
+      xmax: bounds.getEast(), ymax: bounds.getNorth(),
+      spatialReference: {wkid:4326}
+    };
+  }
+
   function popupHtml(a){
     var html = '<div class="pp">';
     if (a.ZONING === 'PUD' && isFlagged(a)) html += '<div style="color:var(--flag);font-weight:600;font-size:11.5px;text-transform:uppercase;">Possible candidate</div>';
@@ -290,15 +300,29 @@
     return html;
   }
 
-  function renderParcels(features){
+  // Tracks every parcel already drawn (by PARCELID) so panning to load an
+  // adjacent area only adds what's new, never re-adds or clears what's there.
+  var loadedParcelIds = {};
+  var totalLoaded = 0;
+  var totalFlagged = 0;
+
+  function resetParcels(){
     parcelLayer.clearLayers();
-    var flaggedCount = 0;
+    loadedParcelIds = {};
+    totalLoaded = 0;
+    totalFlagged = 0;
+  }
+
+  function addParcels(features){
     features.forEach(function(f){
       var a = f.attributes, c = f.centroid;
-      if (!c) return;
+      if (!c || loadedParcelIds[a.PARCELID]) return;
+      loadedParcelIds[a.PARCELID] = true;
+      totalLoaded++;
+
       var pud = a.ZONING === 'PUD';
       var flagged = pud && isFlagged(a);
-      if (flagged) flaggedCount++;
+      if (flagged) totalFlagged++;
       var color = flagged ? "#A8392B" : (pud ? "#6C7A82" : "#B7BDAE");
       var m = L.circleMarker([c.y, c.x], {
         radius: flagged ? 6 : 4,
@@ -311,10 +335,31 @@
       parcelLayer.addLayer(m);
     });
     document.getElementById('nearby-summary').innerHTML =
-      features.length.toLocaleString() + ' parcels within ' + SEARCH_RADIUS_MILES + ' mi &mdash; ' +
-      '<strong style="color:var(--flag)">' + flaggedCount + '</strong> flagged';
+      totalLoaded.toLocaleString() + ' parcels loaded &mdash; ' +
+      '<strong style="color:var(--flag)">' + totalFlagged + '</strong> flagged';
     document.getElementById('nearby-block').style.display = 'block';
   }
+
+  // Once you've searched an address, panning around at roughly that same
+  // zoom level loads whatever's newly visible instead of stopping dead at
+  // the original search radius. Gated by MIN_PAN_LOAD_ZOOM so zooming out to
+  // browse the whole county doesn't try to fetch thousands of parcels at once.
+  var MIN_PAN_LOAD_ZOOM = 14;
+  var suppressNextMoveEnd = false;
+  var panLoadInFlight = false;
+
+  map.on('moveend', async function(){
+    if (!lastFound) return;
+    if (suppressNextMoveEnd){ suppressNextMoveEnd = false; return; }
+    if (map.getZoom() < MIN_PAN_LOAD_ZOOM) return;
+    if (panLoadInFlight) return;
+    panLoadInFlight = true;
+    try {
+      var features = await queryParcels(boundsToEnvelope(map.getBounds()));
+      addParcels(features);
+    } catch(e){ console.error(e); }
+    panLoadInFlight = false;
+  });
 
   async function doSearch(){
     var q = document.getElementById('addr-input').value.trim();
@@ -339,13 +384,15 @@
     homeMarker = L.circleMarker([found.lat, found.lon], {
       radius: 8, weight: 2, color: "#1C2420", fillColor: "#2F6FA8", fillOpacity: 1
     }).addTo(map);
+    suppressNextMoveEnd = true;
     map.setView([found.lat, found.lon], 15, {animate:true});
 
     document.getElementById('subscribe-block').classList.add('show');
 
+    resetParcels();
     try {
       var features = await loadNearbyParcels(found.lat, found.lon);
-      renderParcels(features);
+      addParcels(features);
     } catch(e){
       console.error(e);
     }
