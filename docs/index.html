@@ -168,7 +168,15 @@
   var PARCEL_QUERY_URL = "https://geo.forsythco.com/gis/rest/services/Public/Tax_Parcel/FeatureServer/0/query";
   var OUT_FIELDS = "PARCELID,ZONING,CLASSCD,CLASSDSCRP,SITEADDRESS,BLDGAREA,STATEDAREA,CNTASSDVAL,Link";
   var SEARCH_RADIUS_MILES = 0.75;
-  var CSS_SEARCH_URL = "https://css.forsythco.com/EnerGov_Prod/SelfService/#/search";
+  var CSS_SEARCH_BASE = "https://css.forsythco.com/EnerGov_Prod/SelfService/#/search";
+
+  function cssSearchUrl(parcelId){
+    // The GIS layer's PARCELID comes fixed-width with multiple internal
+    // spaces ("082   221"); the portal's own search matches on the
+    // single-spaced display form ("082 221"), so collapse before encoding.
+    var normalized = (parcelId || "").replace(/\s+/g, " ").trim();
+    return CSS_SEARCH_BASE + "?m=1&fm=1&ps=10&pn=1&em=true&st=" + encodeURIComponent(normalized);
+  }
 
   // Populated once from our own processed_filings table (see loadRecentFilings) —
   // keyed by parcel ID with all whitespace stripped, since the GIS layer's
@@ -290,7 +298,7 @@
 
     html += '<div style="margin-top:8px;display:flex;gap:10px;">';
     if (a.Link) html += '<a href="' + a.Link + '" target="_blank" rel="noopener">qPublic record</a>';
-    html += '<a href="' + CSS_SEARCH_URL + '" target="_blank" rel="noopener">Search county permits</a>';
+    html += '<a href="' + cssSearchUrl(a.PARCELID) + '" target="_blank" rel="noopener">Search county permits</a>';
     html += '</div>';
 
     html += '</div>';
@@ -337,11 +345,11 @@
     document.getElementById('nearby-block').style.display = 'block';
   }
 
-  // Once you've searched an address, panning away from the loaded area at
-  // roughly that same zoom level surfaces a "Search this area" button rather
-  // than fetching silently — gated by MIN_PAN_LOAD_ZOOM so zooming out to
-  // browse the whole county never offers to load thousands of parcels at once.
-  var MIN_PAN_LOAD_ZOOM = 14;
+  // Once you've searched an address, panning away from the loaded area
+  // surfaces a "Search this area" button rather than fetching silently. No
+  // zoom floor here — it's a manual click, always pulling a fixed 0.75mi
+  // circle around the current center, so there's no county-wide-fetch risk
+  // to gate against regardless of how far zoomed out you are.
   var PAN_SHOW_BUTTON_METERS = 400; // ~0.25 mile — ignores small nudges
   var lastLoadCenter = null; // L.LatLng of the center last loaded around
   var areaLoadInFlight = false;
@@ -350,7 +358,7 @@
   map.on('moveend', function(){
     if (!lastFound || !lastLoadCenter) { searchAreaBtn.style.display = 'none'; return; }
     var farEnough = map.getCenter().distanceTo(lastLoadCenter) > PAN_SHOW_BUTTON_METERS;
-    searchAreaBtn.style.display = (map.getZoom() >= MIN_PAN_LOAD_ZOOM && farEnough) ? 'block' : 'none';
+    searchAreaBtn.style.display = farEnough ? 'block' : 'none';
   });
 
   searchAreaBtn.addEventListener('click', async function(){
