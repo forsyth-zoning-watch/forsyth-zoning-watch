@@ -233,21 +233,36 @@
       xmax: lon + d.dLon, ymax: lat + d.dLat,
       spatialReference: {wkid:4326}
     };
-    var params = new URLSearchParams({
-      geometry: JSON.stringify(envelope),
-      geometryType: "esriGeometryEnvelope",
-      spatialRel: "esriSpatialRelIntersects",
-      inSR: "4326",
-      outSR: "4326",
-      outFields: OUT_FIELDS,
-      returnGeometry: "false",
-      returnCentroid: "true",
-      resultRecordCount: "1500",
-      f: "json"
-    });
-    var res = await fetch(PARCEL_QUERY_URL + "?" + params.toString());
-    var data = await res.json();
-    return data.features || [];
+
+    // Dense subdivisions can have well over a thousand parcels within even a
+    // small radius, and the server silently caps each response — so this has
+    // to page through with resultOffset/exceededTransferLimit rather than
+    // assume one request gets everything.
+    var allFeatures = [];
+    var offset = 0;
+    var pageSize = 2000;
+    while (true){
+      var params = new URLSearchParams({
+        geometry: JSON.stringify(envelope),
+        geometryType: "esriGeometryEnvelope",
+        spatialRel: "esriSpatialRelIntersects",
+        inSR: "4326",
+        outSR: "4326",
+        outFields: OUT_FIELDS,
+        returnGeometry: "false",
+        returnCentroid: "true",
+        resultRecordCount: String(pageSize),
+        resultOffset: String(offset),
+        f: "json"
+      });
+      var res = await fetch(PARCEL_QUERY_URL + "?" + params.toString());
+      var data = await res.json();
+      var features = data.features || [];
+      allFeatures = allFeatures.concat(features);
+      if (!data.exceededTransferLimit || features.length === 0) break;
+      offset += features.length;
+    }
+    return allFeatures;
   }
 
   function popupHtml(a){
